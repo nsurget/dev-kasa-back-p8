@@ -10,7 +10,7 @@ function mapPropertyRow(row) {
     price_per_night: row.price_per_night,
     rating_avg: row.rating_avg,
     ratings_count: row.ratings_count,
-    host: row.host_id ? { id: row.host_id, name: row.host_name, picture: row.host_picture } : undefined,
+    host: row.host_id ? { id: row.host_id, name: row.host_name, picture: row.host_picture, email: row.host_email } : undefined,
   };
 }
 
@@ -39,7 +39,7 @@ async function ensureUniqueSlug(db, base, excludeId = null) {
 
 async function listProperties(db) {
   const rows = await db.allAsync(`
-      SELECT p.*, u.name AS host_name, u.picture AS host_picture
+      SELECT p.*, u.name AS host_name, u.picture AS host_picture, u.email AS host_email
       FROM properties p
       JOIN users u ON u.id = p.host_id
       ORDER BY p.title ASC
@@ -49,7 +49,7 @@ async function listProperties(db) {
 
 async function getPropertyDetails(db, id) {
   const row = await db.getAsync(`
-    SELECT p.*, u.name AS host_name, u.picture AS host_picture
+    SELECT p.*, u.name AS host_name, u.picture AS host_picture, u.email AS host_email
     FROM properties p
     JOIN users u ON u.id = p.host_id
     WHERE p.id = ?
@@ -137,15 +137,24 @@ async function updateProperty(db, id, changes) {
   const allowed = ['title', 'description', 'cover', 'location', 'host_id', 'price_per_night'];
   const fields = [];
   const params = [];
+  let updatedSomething = false;
+
+  // 1. Host updates
+  if (changes && 'host' in changes) {
+    const resolvedHostId = await ensureHost(db, changes.host_id, changes.host);
+    if (resolvedHostId) {
+      changes.host_id = resolvedHostId;
+    }
+  }
 
   let newSlug = null;
-  if (Object.prototype.hasOwnProperty.call(changes || {}, 'title')) {
+  if (changes && Object.prototype.hasOwnProperty.call(changes, 'title')) {
     const base = slugify(changes.title);
     newSlug = await ensureUniqueSlug(db, base, id);
   }
 
   for (const k of allowed) {
-    if (k in (changes || {})) {
+    if (changes && k in changes) {
       fields.push(`${k} = ?`);
       params.push(changes[k]);
     }
@@ -155,18 +164,62 @@ async function updateProperty(db, id, changes) {
     params.push(newSlug);
   }
 
-  if (fields.length === 0) {
+  if (fields.length > 0) {
+    params.push(id);
+    const r = await db.runAsync(`UPDATE properties SET ${fields.join(', ')} WHERE id = ?`, params);
+    if (r.changes === 0) {
+      const err = new Error('Property not found');
+      err.status = 404;
+      throw err;
+    }
+    updatedSomething = true;
+  }
+
+  // 2. Pictures updates
+  if (changes && Object.prototype.hasOwnProperty.call(changes, 'pictures')) {
+    await db.runAsync('DELETE FROM property_pictures WHERE property_id = ?', [id]);
+    if (Array.isArray(changes.pictures)) {
+      for (const url of changes.pictures) {
+        if (url) await db.runAsync('INSERT OR IGNORE INTO property_pictures(property_id, url) VALUES (?,?)', [id, url]);
+      }
+    }
+    updatedSomething = true;
+  }
+
+  // 3. Equipments updates
+  if (changes && Object.prototype.hasOwnProperty.call(changes, 'equipments')) {
+    await db.runAsync('DELETE FROM property_equipments WHERE property_id = ?', [id]);
+    if (Array.isArray(changes.equipments)) {
+      for (const name of changes.equipments) {
+        if (name) await db.runAsync('INSERT OR IGNORE INTO property_equipments(property_id, name) VALUES (?,?)', [id, name]);
+      }
+    }
+    updatedSomething = true;
+  }
+
+  // 4. Tags updates
+  if (changes && Object.prototype.hasOwnProperty.call(changes, 'tags')) {
+    await db.runAsync('DELETE FROM property_tags WHERE property_id = ?', [id]);
+    if (Array.isArray(changes.tags)) {
+      for (const name of changes.tags) {
+        if (name) await db.runAsync('INSERT OR IGNORE INTO property_tags(property_id, name) VALUES (?,?)', [id, name]);
+      }
+    }
+    updatedSomething = true;
+  }
+
+  if (!updatedSomething) {
+    const existing = await db.getAsync('SELECT id FROM properties WHERE id = ?', [id]);
+    if (!existing) {
+      const err = new Error('Property not found');
+      err.status = 404;
+      throw err;
+    }
     const err = new Error('No fields to update');
     err.status = 400;
     throw err;
   }
-  params.push(id);
-  const r = await db.runAsync(`UPDATE properties SET ${fields.join(', ')} WHERE id = ?`, params);
-  if (r.changes === 0) {
-    const err = new Error('Property not found');
-    err.status = 404;
-    throw err;
-  }
+
   return await getPropertyDetails(db, id);
 }
 
