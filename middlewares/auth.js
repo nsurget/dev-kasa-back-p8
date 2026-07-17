@@ -1,4 +1,5 @@
 const jwt = require('jsonwebtoken');
+const { getPropertyOwnerId } = require('../services/propertiesService');
 
 const JWT_SECRET = process.env.JWT_SECRET || 'change-me-in-prod';
 
@@ -52,4 +53,36 @@ function requireSelfOrAdmin(param = 'id') {
   };
 }
 
-module.exports = { authenticate, requireAuth, requireAdmin, requireRole, requireSelfOrAdmin };
+function requirePropertyOwnerOrAdmin(req, res, next) {
+  requireAuth(req, res, async () => {
+    if (req.user.role === 'admin') return next();
+    if (req.user.role !== 'owner') return res.status(403).json({ error: 'forbidden: owner or admin role required' });
+
+    const db = req.app.locals.db;
+    const propertyId = req.params.id;
+
+    try {
+      const ownerId = await getPropertyOwnerId(db, propertyId);
+      if (!ownerId) {
+        return res.status(404).json({ error: 'Property not found' });
+      }
+
+      if (Number(req.user.id) !== Number(ownerId)) {
+        return res.status(403).json({ error: 'forbidden: you do not own this property' });
+      }
+
+      next();
+    } catch (e) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+}
+
+module.exports = {
+  authenticate,
+  requireAuth,
+  requireAdmin,
+  requireRole,
+  requireSelfOrAdmin,
+  requirePropertyOwnerOrAdmin
+};

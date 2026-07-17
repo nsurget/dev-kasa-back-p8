@@ -2,3 +2,5 @@ node_modules
 .idea
 .env
 *.sqlite3
+
+/public/uploads/*

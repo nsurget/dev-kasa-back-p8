@@ -2,7 +2,7 @@ const express = require('express');
 const router = express.Router();
 
 const dbReady = require('../middlewares/dbReady');
-const { requireRole, requireAdmin, requireSelfOrAdmin, requireAuth } = require('../middlewares/auth');
+const { requireRole, requireAdmin, requireSelfOrAdmin, requireAuth, requirePropertyOwnerOrAdmin } = require('../middlewares/auth');
 const properties = require('../controllers/propertiesController');
 const users = require('../controllers/usersController');
 const ratings = require('../controllers/ratingsController');
@@ -16,8 +16,8 @@ router.use(dbReady);
 router.get('/properties', properties.list);
 router.get('/properties/:id', properties.getById);
 router.post('/properties', requireRole(['owner','admin']), properties.create);
-router.patch('/properties/:id', requireRole(['owner','admin']), properties.update);
-router.delete('/properties/:id', requireRole(['owner','admin']), properties.remove);
+router.patch('/properties/:id', requirePropertyOwnerOrAdmin, properties.update);
+router.delete('/properties/:id', requirePropertyOwnerOrAdmin, properties.remove);
 
 // Users
 router.get('/users', requireAdmin, users.list);

@@ -134,6 +134,13 @@ async function createProperty(db, payload) {
 }
 
 async function updateProperty(db, id, changes) {
+  const existing = await db.getAsync('SELECT id FROM properties WHERE id = ?', [id]);
+  if (!existing) {
+    const err = new Error('Property not found');
+    err.status = 404;
+    throw err;
+  }
+
   const allowed = ['title', 'description', 'cover', 'location', 'host_id', 'price_per_night'];
   const fields = [];
   const params = [];
@@ -166,12 +173,7 @@ async function updateProperty(db, id, changes) {
 
   if (fields.length > 0) {
     params.push(id);
-    const r = await db.runAsync(`UPDATE properties SET ${fields.join(', ')} WHERE id = ?`, params);
-    if (r.changes === 0) {
-      const err = new Error('Property not found');
-      err.status = 404;
-      throw err;
-    }
+    await db.runAsync(`UPDATE properties SET ${fields.join(', ')} WHERE id = ?`, params);
     updatedSomething = true;
   }
 
@@ -209,12 +211,6 @@ async function updateProperty(db, id, changes) {
   }
 
   if (!updatedSomething) {
-    const existing = await db.getAsync('SELECT id FROM properties WHERE id = ?', [id]);
-    if (!existing) {
-      const err = new Error('Property not found');
-      err.status = 404;
-      throw err;
-    }
     const err = new Error('No fields to update');
     err.status = 400;
     throw err;
