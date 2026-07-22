@@ -36,7 +36,18 @@ async function getById(req, res) {
 async function create(req, res) {
   const db = req.app.locals.db;
   try {
-    const created = await createProperty(db, req.body || {});
+    const payload = req.body || {};
+    if (req.user) {
+      if (req.user.role !== 'admin') {
+        payload.host_id = req.user.id;
+        delete payload.host;
+      } else if (!payload.host_id) {
+        // Fallback for admin if no host is selected
+        payload.host_id = req.user.id;
+        delete payload.host;
+      }
+    }
+    const created = await createProperty(db, payload);
     res.status(201).json(created);
   } catch (e) {
     const code = statusFromError(e);
@@ -52,7 +63,12 @@ async function create(req, res) {
 async function update(req, res) {
   const db = req.app.locals.db;
   try {
-    const updated = await updateProperty(db, req.params.id, req.body || {});
+    const payload = req.body || {};
+    if (req.user && req.user.role !== 'admin') {
+      delete payload.host_id;
+      delete payload.host;
+    }
+    const updated = await updateProperty(db, req.params.id, payload);
     res.json(updated);
   } catch (e) {
     res.status(statusFromError(e)).json({ error: e.message });

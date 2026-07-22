@@ -1,4 +1,4 @@
-const { listUsers, getUser, createUser, updateUser } = require('../services/usersService');
+const { listUsers, getUser, createUser, updateUser, deleteUser } = require('../services/usersService');
 
 function statusFromError(e) {
   if (e && e.status) return e.status;
@@ -48,9 +48,20 @@ async function update(req, res) {
   }
 }
 
+async function remove(req, res) {
+  const db = req.app.locals.db;
+  try {
+    const result = await deleteUser(db, req.params.id);
+    res.json(result);
+  } catch (e) {
+    res.status(statusFromError(e)).json({ error: e.message });
+  }
+}
+
 module.exports = {
   list,
   getById,
   create,
   update,
+  remove,
 };

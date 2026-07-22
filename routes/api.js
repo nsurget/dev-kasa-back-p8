@@ -24,6 +24,7 @@ router.get('/users', requireAdmin, users.list);
 router.get('/users/:id', requireSelfOrAdmin('id'), users.getById);
 router.post('/users', requireAdmin, users.create);
 router.patch('/users/:id', requireSelfOrAdmin('id'), users.update);
+router.delete('/users/:id', requireSelfOrAdmin('id'), users.remove);
 
 // Ratings for properties
 router.get('/properties/:id/ratings', ratings.listForProperty);

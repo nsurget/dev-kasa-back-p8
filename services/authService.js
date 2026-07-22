@@ -25,7 +25,42 @@ function signToken(user) {
   return jwt.sign(payload, JWT_SECRET, { expiresIn: JWT_EXPIRES_IN });
 }
 
-async function register(db, { name, email, password, picture = null, role = 'client' }) {
+const fs = require('fs');
+const path = require('path');
+
+async function sendVerificationEmail(email, token) {
+  const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3001';
+  const verificationLink = `${frontendUrl}/verify-email?token=${token}`;
+  const mailContent = `
+============================================================
+TO: ${email}
+SUBJECT: Confirmez votre adresse email - Kasa
+
+Bonjour,
+
+Merci de vous être inscrit sur Kasa.
+Veuillez confirmer votre adresse email en cliquant sur le lien suivant:
+${verificationLink}
+
+Ce lien expirera dans 24 heures.
+
+Si vous n'avez pas créé de compte, vous pouvez ignorer cet email.
+============================================================
+  `;
+  console.log(mailContent);
+
+  try {
+    const logDir = path.join(__dirname, '../data/logs');
+    if (!fs.existsSync(logDir)) {
+      fs.mkdirSync(logDir, { recursive: true });
+    }
+    fs.appendFileSync(path.join(logDir, 'mail.log'), `${new Date().toISOString()} - ${mailContent}\n`);
+  } catch (err) {
+    console.error('Failed to log verification email to file:', err);
+  }
+}
+
+async function register(db, { name, email, password, picture = null }) {
   if (!name) {
     const err = new Error('name is required'); err.status = 400; throw err;
   }
@@ -35,28 +70,77 @@ async function register(db, { name, email, password, picture = null, role = 'cli
   if (!password || String(password).length < 6) {
     const err = new Error('password must be at least 6 characters'); err.status = 400; throw err;
   }
-  if (!['owner','client'].includes(role)) role = 'client';
+  
+  const role = 'client'; // Enforced minimum privilege role
   const password_hash = hashPassword(String(password));
+  const verification_token = crypto.randomBytes(32).toString('hex');
+  
   try {
-    const r = await db.runAsync('INSERT INTO users(name, email, password_hash, picture, role) VALUES (?,?,?,?,?)', [name, email, password_hash, picture, role]);
-    const user = await db.getAsync('SELECT id, name, email, picture, role FROM users WHERE id = ?', [r.lastID]);
-    const token = signToken(user);
-    return { token, user };
+    const r = await db.runAsync(
+      'INSERT INTO users(name, email, password_hash, picture, role, is_verified, verification_token, owner_request_status) VALUES (?,?,?,?,?,0,?,\'none\')',
+      [name, email, password_hash, picture, role, verification_token]
+    );
+    const user = await db.getAsync('SELECT id, name, email, picture, role, is_verified, owner_request_status FROM users WHERE id = ?', [r.lastID]);
+    await sendVerificationEmail(email, verification_token);
+    return { ok: true, message: 'Inscription réussie. Veuillez valider votre adresse email.', user };
   } catch (e) {
-    if (/UNIQUE/i.test(e.message)) { const err = new Error('email already registered'); err.status = 409; throw err; }
+    if (/UNIQUE/i.test(e.message)) { const err = new Error('Cet email est déjà enregistré'); err.status = 409; throw err; }
     throw e;
   }
 }
 
 async function login(db, { email, password }) {
   if (!email || !password) { const err = new Error('email and password are required'); err.status = 400; throw err; }
-  const user = await db.getAsync('SELECT id, name, email, picture, role, password_hash FROM users WHERE email = ?', [email]);
+  const user = await db.getAsync('SELECT id, name, email, picture, role, password_hash, is_verified, owner_request_status FROM users WHERE email = ?', [email]);
   if (!user || !user.password_hash || !verifyPassword(String(password), user.password_hash)) {
     const err = new Error('invalid credentials'); err.status = 401; throw err;
   }
-  const { password_hash, ...publicUser } = user;
+  if (user.is_verified === 0) {
+    const err = new Error('Veuillez vérifier votre adresse email pour activer votre compte.');
+    err.status = 403;
+    throw err;
+  }
+  const { password_hash, is_verified, ...publicUser } = user;
   const token = signToken(publicUser);
   return { token, user: publicUser };
+}
+
+async function verifyEmail(db, { token }) {
+  if (!token) {
+    const err = new Error('Token requis');
+    err.status = 400;
+    throw err;
+  }
+  const user = await db.getAsync('SELECT id FROM users WHERE verification_token = ?', [token]);
+  if (!user) {
+    const err = new Error('Token de validation invalide ou expiré');
+    err.status = 400;
+    throw err;
+  }
+  await db.runAsync('UPDATE users SET is_verified = 1, verification_token = NULL WHERE id = ?', [user.id]);
+  return { ok: true, message: 'Votre adresse email a bien été validée.' };
+}
+
+async function resendVerification(db, { email }) {
+  if (!email) {
+    const err = new Error('Email requis');
+    err.status = 400;
+    throw err;
+  }
+  const user = await db.getAsync('SELECT id, is_verified FROM users WHERE email = ?', [email]);
+  if (!user) {
+    // Avoid email enumeration, return success-like response
+    return { ok: true, message: 'Un email de validation a été envoyé si l\'adresse existe.' };
+  }
+  if (user.is_verified) {
+    const err = new Error('Ce compte est déjà validé');
+    err.status = 400;
+    throw err;
+  }
+  const token = crypto.randomBytes(32).toString('hex');
+  await db.runAsync('UPDATE users SET verification_token = ? WHERE id = ?', [token, user.id]);
+  await sendVerificationEmail(email, token);
+  return { ok: true, message: 'Un nouvel email de confirmation a été envoyé.' };
 }
 
 async function requestPasswordReset(db, { email }) {
@@ -92,4 +176,6 @@ module.exports = {
   hashPassword,
   verifyPassword,
   signToken,
+  verifyEmail,
+  resendVerification,
 };

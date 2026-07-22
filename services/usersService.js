@@ -1,12 +1,12 @@
 async function listUsers(db) {
-  return await db.allAsync('SELECT id, name, picture, role FROM users ORDER BY id DESC');
+  return await db.allAsync('SELECT id, name, email, picture, role, is_verified, owner_request_status FROM users ORDER BY id DESC');
 }
 
 async function getUser(db, id) {
-  return await db.getAsync('SELECT id, name, picture, role FROM users WHERE id = ?', [id]);
+  return await db.getAsync('SELECT id, name, email, picture, role, is_verified, owner_request_status FROM users WHERE id = ?', [id]);
 }
 
-async function createUser(db, { name, picture = null, role = 'client' }) {
+async function createUser(db, { name, picture = null, role = 'client', email = null, password_hash = null, is_verified = 1 }) {
   if (!name) {
     const err = new Error('name is required');
     err.status = 400;
@@ -18,7 +18,10 @@ async function createUser(db, { name, picture = null, role = 'client' }) {
     throw err;
   }
   try {
-    const r = await db.runAsync('INSERT INTO users(name, picture, role) VALUES (?,?,?)', [name, picture, role]);
+    const r = await db.runAsync(
+      'INSERT INTO users(name, email, password_hash, picture, role, is_verified, owner_request_status) VALUES (?,?,?,?,?,?,\'none\')',
+      [name, email, password_hash, picture, role, is_verified]
+    );
     return await getUser(db, r.lastID);
   } catch (e) {
     if (/UNIQUE/i.test(e.message)) {
@@ -31,7 +34,7 @@ async function createUser(db, { name, picture = null, role = 'client' }) {
 }
 
 async function updateUser(db, id, changes, { allowAdminRole = false } = {}) {
-  const allowedFields = ['name', 'picture', 'role'];
+  const allowedFields = ['name', 'picture', 'role', 'owner_request_status'];
   const fields = [];
   const params = [];
   for (const key of allowedFields) {
@@ -43,8 +46,22 @@ async function updateUser(db, id, changes, { allowAdminRole = false } = {}) {
           err.status = 400;
           throw err;
         }
-        if (role === 'admin' && !allowAdminRole) {
-          const err = new Error('forbidden to set admin role');
+        if (!allowAdminRole) {
+          const err = new Error('forbidden to change user role');
+          err.status = 403;
+          throw err;
+        }
+      }
+      if (key === 'owner_request_status') {
+        const status = changes.owner_request_status;
+        if (!['none', 'pending', 'approved', 'rejected'].includes(status)) {
+          const err = new Error('invalid request status');
+          err.status = 400;
+          throw err;
+        }
+        // Non-admins can only submit a request to 'pending' or cancel it to 'none'
+        if (!allowAdminRole && (status === 'approved' || status === 'rejected')) {
+          const err = new Error('only admin can approve or reject request');
           err.status = 403;
           throw err;
         }
@@ -68,9 +85,24 @@ async function updateUser(db, id, changes, { allowAdminRole = false } = {}) {
   return await getUser(db, id);
 }
 
+async function deleteUser(db, id) {
+  // Delete all properties owned by this user (cascades pictures, equipments, tags)
+  await db.runAsync('DELETE FROM properties WHERE host_id = ?', [id]);
+  
+  // Delete the user (cascades favorites, ratings)
+  const r = await db.runAsync('DELETE FROM users WHERE id = ?', [id]);
+  if (r.changes === 0) {
+    const err = new Error('User not found');
+    err.status = 404;
+    throw err;
+  }
+  return { ok: true };
+}
+
 module.exports = {
   listUsers,
   getUser,
   createUser,
   updateUser,
+  deleteUser,
 };

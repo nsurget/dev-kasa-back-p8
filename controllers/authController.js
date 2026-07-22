@@ -1,4 +1,4 @@
-const { register, login, requestPasswordReset, resetPassword } = require('../services/authService');
+const { register, login, requestPasswordReset, resetPassword, verifyEmail, resendVerification } = require('../services/authService');
 
 function statusFromError(e) {
   if (e && e.status) return e.status;
@@ -45,4 +45,24 @@ async function doResetPassword(req, res) {
   }
 }
 
-module.exports = { doRegister, doLogin, doRequestReset, doResetPassword };
+async function doVerifyEmail(req, res) {
+  const db = req.app.locals.db;
+  try {
+    const result = await verifyEmail(db, req.body || {});
+    res.status(200).json(result);
+  } catch (e) {
+    res.status(statusFromError(e)).json({ error: e.message });
+  }
+}
+
+async function doResendVerification(req, res) {
+  const db = req.app.locals.db;
+  try {
+    const result = await resendVerification(db, req.body || {});
+    res.status(200).json(result);
+  } catch (e) {
+    res.status(statusFromError(e)).json({ error: e.message });
+  }
+}
+
+module.exports = { doRegister, doLogin, doRequestReset, doResetPassword, doVerifyEmail, doResendVerification };

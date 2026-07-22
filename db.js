@@ -34,6 +34,9 @@ async function initSchema(db) {
     role TEXT NOT NULL CHECK (role IN ('owner','client','admin')),
     email TEXT,
     password_hash TEXT,
+    is_verified INTEGER DEFAULT 0,
+    verification_token TEXT,
+    owner_request_status TEXT CHECK (owner_request_status IN ('none', 'pending', 'approved', 'rejected')) DEFAULT 'none',
     UNIQUE(name, picture),
     UNIQUE(email)
   );
@@ -121,6 +124,16 @@ async function initSchema(db) {
     if (!names.has('reset_expires')) {
       await db.runAsync('ALTER TABLE users ADD COLUMN reset_expires INTEGER');
     }
+    if (!names.has('is_verified')) {
+      await db.runAsync('ALTER TABLE users ADD COLUMN is_verified INTEGER DEFAULT 0');
+    }
+    if (!names.has('verification_token')) {
+      await db.runAsync('ALTER TABLE users ADD COLUMN verification_token TEXT');
+      await db.runAsync('CREATE INDEX IF NOT EXISTS idx_users_verification_token ON users(verification_token)');
+    }
+    if (!names.has('owner_request_status')) {
+      await db.runAsync("ALTER TABLE users ADD COLUMN owner_request_status TEXT DEFAULT 'none'");
+    }
   } catch (e) {
     // ignore
   }
@@ -190,7 +203,7 @@ async function seedIfEmpty(db) {
           // Ensure owner user exists
           let user = await db.getAsync('SELECT id FROM users WHERE name = ? AND IFNULL(picture, "") = IFNULL(?, "")', [hostName, hostPic]);
           if (!user) {
-            const ins = await db.runAsync('INSERT INTO users(name, picture, role) VALUES (?,?,?)', [hostName, hostPic, 'owner']);
+            const ins = await db.runAsync('INSERT INTO users(name, picture, role, is_verified) VALUES (?,?,?,1)', [hostName, hostPic, 'owner']);
             user = { id: ins.lastID };
           }
 
