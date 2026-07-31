@@ -56,5 +56,9 @@ test('messagesService unit tests', async (t) => {
     const updatedConvs = await messagesService.getUserConversations(2);
     const updatedConv = updatedConvs.find(c => c.id === convId);
     assert.equal(updatedConv.unread_count, 0);
+
+    // Teardown: clean up test data so it doesn't pollute SQLite DB
+    await db.runAsync('DELETE FROM messages WHERE conversation_id = ?', [convId]);
+    await db.runAsync('DELETE FROM conversations WHERE id = ?', [convId]);
   });
 });

@@ -74,7 +74,7 @@ async function getUserConversations(userId) {
       ORDER BY created_at DESC, id DESC 
       LIMIT 1
     )
-    WHERE c.user1_id = ? OR c.user2_id = ?
+    WHERE (c.user1_id = ? OR c.user2_id = ?) AND m.id IS NOT NULL
     ORDER BY c.updated_at DESC
   `;
 
