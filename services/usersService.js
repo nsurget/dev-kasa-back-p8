@@ -1,3 +1,5 @@
+const { deleteUploadedFile } = require('../utils/fileUtils');
+
 async function listUsers(db) {
   return await db.allAsync('SELECT id, name, email, picture, role, is_verified, owner_request_status FROM users ORDER BY id DESC');
 }
@@ -34,6 +36,14 @@ async function createUser(db, { name, picture = null, role = 'client', email = n
 }
 
 async function updateUser(db, id, changes, { allowAdminRole = false } = {}) {
+  // Check if picture is changing to delete old avatar file
+  if (Object.prototype.hasOwnProperty.call(changes || {}, 'picture')) {
+    const currentUser = await db.getAsync('SELECT picture FROM users WHERE id = ?', [id]);
+    if (currentUser && currentUser.picture && currentUser.picture !== changes.picture) {
+      deleteUploadedFile(currentUser.picture);
+    }
+  }
+
   const allowedFields = ['name', 'picture', 'role', 'owner_request_status'];
   const fields = [];
   const params = [];
@@ -86,8 +96,20 @@ async function updateUser(db, id, changes, { allowAdminRole = false } = {}) {
 }
 
 async function deleteUser(db, id) {
-  // Delete all properties owned by this user (cascades pictures, equipments, tags)
-  await db.runAsync('DELETE FROM properties WHERE host_id = ?', [id]);
+  // Delete physical avatar file of user
+  const u = await db.getAsync('SELECT picture FROM users WHERE id = ?', [id]);
+  if (u && u.picture) {
+    deleteUploadedFile(u.picture);
+  }
+
+  // Delete all properties owned by this user (and their physical files)
+  const userProperties = await db.allAsync('SELECT id FROM properties WHERE host_id = ?', [id]);
+  const { deleteProperty } = require('./propertiesService');
+  for (const p of userProperties) {
+    try {
+      await deleteProperty(db, p.id);
+    } catch (_) {}
+  }
   
   // Delete the user (cascades favorites, ratings)
   const r = await db.runAsync('DELETE FROM users WHERE id = ?', [id]);

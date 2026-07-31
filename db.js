@@ -6,7 +6,10 @@ const { promisify } = require('util');
 const DB_PATH = path.join(__dirname, 'data', 'kasa.sqlite3');
 const PROPS_JSON_PATH = path.join(__dirname, 'data', 'properties.json');
 
+let _instance = null;
+
 function openDb() {
+  if (_instance) return _instance;
   const db = new sqlite3.Database(DB_PATH);
   // Promisify helpers
   db.runAsync = function (sql, params = []) {
@@ -20,7 +23,12 @@ function openDb() {
   db.getAsync = promisify(db.get.bind(db));
   db.allAsync = promisify(db.all.bind(db));
   db.execAsync = promisify(db.exec.bind(db));
+  _instance = db;
   return db;
+}
+
+function getDb() {
+  return openDb();
 }
 
 async function initSchema(db) {
@@ -99,9 +107,34 @@ async function initSchema(db) {
     FOREIGN KEY(property_id) REFERENCES properties(id) ON DELETE CASCADE
   );
 
+  CREATE TABLE IF NOT EXISTS conversations (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user1_id INTEGER NOT NULL,
+    user2_id INTEGER NOT NULL,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(user1_id, user2_id),
+    FOREIGN KEY(user1_id) REFERENCES users(id) ON DELETE CASCADE,
+    FOREIGN KEY(user2_id) REFERENCES users(id) ON DELETE CASCADE
+  );
+
+  CREATE TABLE IF NOT EXISTS messages (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    conversation_id INTEGER NOT NULL,
+    sender_id INTEGER NOT NULL,
+    content TEXT NOT NULL,
+    is_read INTEGER DEFAULT 0,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY(conversation_id) REFERENCES conversations(id) ON DELETE CASCADE,
+    FOREIGN KEY(sender_id) REFERENCES users(id) ON DELETE CASCADE
+  );
+
   CREATE INDEX IF NOT EXISTS idx_properties_host ON properties(host_id);
   CREATE INDEX IF NOT EXISTS idx_ratings_property ON ratings(property_id);
   CREATE INDEX IF NOT EXISTS idx_ratings_user ON ratings(user_id);
+  CREATE INDEX IF NOT EXISTS idx_conversations_user1 ON conversations(user1_id);
+  CREATE INDEX IF NOT EXISTS idx_conversations_user2 ON conversations(user2_id);
+  CREATE INDEX IF NOT EXISTS idx_messages_conversation ON messages(conversation_id);
   `;
 
   await db.execAsync(schema);
@@ -264,5 +297,6 @@ async function initialize() {
 module.exports = {
   initialize,
   openDb,
+  getDb,
   DB_PATH,
 };

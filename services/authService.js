@@ -25,40 +25,12 @@ function signToken(user) {
   return jwt.sign(payload, JWT_SECRET, { expiresIn: JWT_EXPIRES_IN });
 }
 
-const fs = require('fs');
-const path = require('path');
+const emailService = require('./emailService');
 
 async function sendVerificationEmail(email, token) {
-  const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3001';
-  const verificationLink = `${frontendUrl}/verify-email?token=${token}`;
-  const mailContent = `
-============================================================
-TO: ${email}
-SUBJECT: Confirmez votre adresse email - Kasa
-
-Bonjour,
-
-Merci de vous être inscrit sur Kasa.
-Veuillez confirmer votre adresse email en cliquant sur le lien suivant:
-${verificationLink}
-
-Ce lien expirera dans 24 heures.
-
-Si vous n'avez pas créé de compte, vous pouvez ignorer cet email.
-============================================================
-  `;
-  console.log(mailContent);
-
-  try {
-    const logDir = path.join(__dirname, '../data/logs');
-    if (!fs.existsSync(logDir)) {
-      fs.mkdirSync(logDir, { recursive: true });
-    }
-    fs.appendFileSync(path.join(logDir, 'mail.log'), `${new Date().toISOString()} - ${mailContent}\n`);
-  } catch (err) {
-    console.error('Failed to log verification email to file:', err);
-  }
+  return emailService.sendVerificationEmail(email, token);
 }
+
 
 async function register(db, { name, email, password, picture = null }) {
   if (!name) {
@@ -151,6 +123,11 @@ async function requestPasswordReset(db, { email }) {
   const expires = Date.now() + 60 * 60 * 1000; // 1 hour
   if (user) {
     await db.runAsync('UPDATE users SET reset_token = ?, reset_expires = ? WHERE id = ?', [token, expires, user.id]);
+    try {
+      await emailService.sendPasswordResetEmail(user.email, token);
+    } catch (e) {
+      console.error('Failed to send password reset email:', e);
+    }
   }
   const resp = { ok: true, message: 'If the email exists, a reset link has been sent.' };
   if (process.env.NODE_ENV !== 'production') resp.token = token;

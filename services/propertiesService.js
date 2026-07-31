@@ -1,3 +1,5 @@
+const { deleteUploadedFile } = require('../utils/fileUtils');
+
 function mapPropertyRow(row) {
   if (!row) return null;
   return {
@@ -86,7 +88,6 @@ async function createProperty(db, payload) {
     title,
     description = null,
     cover = null,
-    location = null,
     price_per_night,
     host_id,
     host,
@@ -95,7 +96,11 @@ async function createProperty(db, payload) {
     tags = [],
   } = payload || {};
 
-  if (!title) throw new Error('title is required');
+  if (Array.isArray(pictures) && pictures.length > 24) {
+    const err = new Error('A property cannot have more than 24 pictures');
+    err.status = 400;
+    throw err;
+  }
   let price = Number(price_per_night);
   if (!Number.isFinite(price) || price <= 0) price = 80;
 
@@ -179,6 +184,11 @@ async function updateProperty(db, id, changes) {
 
   // 2. Pictures updates
   if (changes && Object.prototype.hasOwnProperty.call(changes, 'pictures')) {
+    if (Array.isArray(changes.pictures) && changes.pictures.length > 24) {
+      const err = new Error('A property cannot have more than 24 pictures');
+      err.status = 400;
+      throw err;
+    }
     await db.runAsync('DELETE FROM property_pictures WHERE property_id = ?', [id]);
     if (Array.isArray(changes.pictures)) {
       for (const url of changes.pictures) {
@@ -220,6 +230,17 @@ async function updateProperty(db, id, changes) {
 }
 
 async function deleteProperty(db, id) {
+  // 1. Fetch cover and all pictures of the property to delete physical files
+  const prop = await db.getAsync('SELECT cover FROM properties WHERE id = ?', [id]);
+  const pics = await db.allAsync('SELECT url FROM property_pictures WHERE property_id = ?', [id]);
+
+  if (prop && prop.cover) {
+    deleteUploadedFile(prop.cover);
+  }
+  if (pics && pics.length > 0) {
+    pics.forEach((p) => deleteUploadedFile(p.url));
+  }
+
   const r = await db.runAsync('DELETE FROM properties WHERE id = ?', [id]);
   if (r.changes === 0) {
     const err = new Error('Property not found');

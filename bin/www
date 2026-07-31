@@ -1,5 +1,7 @@
 #!/usr/bin/env node
 
+require('dotenv').config();
+
 /**
  * Module dependencies.
  */
@@ -20,6 +22,8 @@ app.set('port', port);
  */
 
 const server = http.createServer(app);
+const { initSocketServer } = require('../socketHandler');
+initSocketServer(server);
 
 /**
  * Listen on provided port, on all network interfaces.

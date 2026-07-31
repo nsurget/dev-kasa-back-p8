@@ -36,9 +36,16 @@ router.delete('/properties/:id/favorite', requireAuth, favorites.removeForProper
 router.get('/users/:id/favorites', requireSelfOrAdmin('id'), favorites.listForUser);
 
 // Uploads
-router.post('/uploads/image', requireRole(['owner','admin']), uploads.uploadImage);
+router.post('/uploads/image', requireAuth, uploads.uploadImage);
 
 // Delete one or multiple uploaded images by filename or URL
 router.delete('/uploads/images', requireRole(['owner','admin']), uploads.deleteImages);
+
+// Messaging / Conversations
+const messages = require('../controllers/messagesController');
+router.get('/conversations', requireAuth, messages.getConversations);
+router.post('/conversations', requireAuth, messages.startConversation);
+router.get('/conversations/:id/messages', requireAuth, messages.getMessages);
+router.put('/conversations/:id/read', requireAuth, messages.markRead);
 
 module.exports = router;
