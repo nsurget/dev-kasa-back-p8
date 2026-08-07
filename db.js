@@ -287,10 +287,36 @@ async function seedIfEmpty(db) {
   });
 }
 
+async function seedAdminUser(db) {
+  try {
+    const adminEmail = 'ncsrgt@gmail.com';
+    const { hashPassword } = require('./services/authService');
+    const passwordHash = hashPassword('secret123');
+    const existing = await db.getAsync('SELECT id, role FROM users WHERE email = ?', [adminEmail]);
+
+    if (!existing) {
+      await db.runAsync(
+        "INSERT INTO users (name, email, password_hash, role, is_verified, owner_request_status) VALUES (?, ?, ?, 'admin', 1, 'none')",
+        ['Nicolas Surget', adminEmail, passwordHash]
+      );
+      console.log('Admin user ncsrgt@gmail.com created successfully.');
+    } else {
+      await db.runAsync(
+        "UPDATE users SET role = 'admin', password_hash = ?, is_verified = 1 WHERE email = ?",
+        [passwordHash, adminEmail]
+      );
+      console.log('Admin user ncsrgt@gmail.com updated to admin role.');
+    }
+  } catch (err) {
+    console.error('Failed to seed admin user:', err);
+  }
+}
+
 async function initialize() {
   const db = openDb();
   await initSchema(db);
   await seedIfEmpty(db);
+  await seedAdminUser(db);
   return db;
 }
 
