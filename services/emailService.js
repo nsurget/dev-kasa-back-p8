@@ -26,6 +26,12 @@ function getTransporter() {
       user: user || undefined,
       pass: pass,
     },
+    connectionTimeout: 10000,
+    greetingTimeout: 10000,
+    socketTimeout: 10000,
+    tls: {
+      rejectUnauthorized: false
+    }
   });
 }
 
@@ -91,7 +97,7 @@ async function sendMail({ to, subject, text, html }) {
     console.error(`[EmailService] Failed to send email via SMTP to ${to}:`, error);
     // Fallback to local logging on error so application flow is not completely broken
     logEmailLocally({ to, subject, text, html });
-    throw error;
+    return { ok: false, fallback: true, error: error.message };
   }
 }
 
