@@ -66,7 +66,59 @@ ${text}
 }
 
 /**
- * Core function to send an email via SMTP or local log fallback.
+ * Sends email via Brevo HTTP REST API (uses port 443 HTTPS - never blocked by cloud hosting).
+ */
+async function sendViaBrevoApi({ to, subject, text, html }) {
+  const apiKey = process.env.BREVO_API_KEY || process.env.SMTP_PASS;
+  if (!apiKey) return null;
+
+  const rawFrom = process.env.EMAIL_FROM || 'nsurget <nepasrepondre@nsurget.fr>';
+  let senderName = 'Kasa';
+  let senderEmail = 'nepasrepondre@nsurget.fr';
+
+  const match = rawFrom.match(/^(.*)<(.*)>$/);
+  if (match) {
+    senderName = match[1].trim() || 'Kasa';
+    senderEmail = match[2].trim();
+  } else if (rawFrom.includes('@')) {
+    senderEmail = rawFrom.trim();
+  }
+
+  const payload = {
+    sender: { name: senderName, email: senderEmail },
+    to: [{ email: to }],
+    subject: subject,
+    textContent: text,
+    htmlContent: html || text,
+  };
+
+  try {
+    const response = await fetch('https://api.brevo.com/v3/smtp/email', {
+      method: 'POST',
+      headers: {
+        'accept': 'application/json',
+        'api-key': apiKey,
+        'content-type': 'application/json',
+      },
+      body: JSON.stringify(payload),
+    });
+
+    if (!response.ok) {
+      const errText = await response.text();
+      throw new Error(`HTTP ${response.status}: ${errText}`);
+    }
+
+    const data = await response.json();
+    console.log(`[EmailService] Email successfully sent via Brevo HTTPS API to ${to}. MessageId: ${data.messageId}`);
+    return { ok: true, messageId: data.messageId };
+  } catch (err) {
+    console.error(`[EmailService] Brevo HTTPS API error:`, err.message);
+    return null;
+  }
+}
+
+/**
+ * Core function to send an email via Brevo API, SMTP or local log fallback.
  * @param {Object} options 
  * @param {string} options.to 
  * @param {string} options.subject 
@@ -74,6 +126,13 @@ ${text}
  * @param {string} [options.html] 
  */
 async function sendMail({ to, subject, text, html }) {
+  // 1. Try Brevo HTTP API first (port 443 - zero timeout risk)
+  const brevoRes = await sendViaBrevoApi({ to, subject, text, html });
+  if (brevoRes && brevoRes.ok) {
+    return brevoRes;
+  }
+
+  // 2. Fallback to Nodemailer SMTP
   const transporter = getTransporter();
   const from = process.env.EMAIL_FROM || 'Kasa <noreply@kasa.fr>';
 
@@ -91,11 +150,10 @@ async function sendMail({ to, subject, text, html }) {
       text,
       html,
     });
-    console.log(`[EmailService] Email successfully sent to ${to}. MessageId: ${info.messageId}`);
+    console.log(`[EmailService] Email successfully sent via SMTP to ${to}. MessageId: ${info.messageId}`);
     return { ok: true, messageId: info.messageId };
   } catch (error) {
     console.error(`[EmailService] Failed to send email via SMTP to ${to}:`, error);
-    // Fallback to local logging on error so application flow is not completely broken
     logEmailLocally({ to, subject, text, html });
     return { ok: false, fallback: true, error: error.message };
   }
