@@ -131,3 +131,40 @@ Créer une propriété (owner/admin):
 - Upload non disponible: assurez-vous que la dépendance multer est installée (elle l’est par défaut via package.json) et que vous envoyez bien un champ file.
 - Port déjà utilisé: changez PORT ou libérez le port.
 - Repartir de zéro: stoppez le serveur, supprimez data/kasa.sqlite3, relancez (recréation du schéma et seed depuis data/properties.json si disponible).
+
+## Modifications ajoutées à la fork du projet (nsurget)
+
+Ce dépôt est un fork de la base de départ fournie par OpenClassrooms. Voici les évolutions apportées par rapport à cette base :
+
+### Authentification & sécurité
+- Ajout du module d'authentification JWT (inscription, connexion, gestion des rôles `client` / `owner` / `admin`).
+- Mise en place de la réinitialisation de mot de passe (`/auth/request-reset`, `/auth/reset-password`).
+- Ajout du workflow de vérification d'adresse email à l'inscription (compte non activé tant que l'email n'est pas confirmé).
+- Nouveaux middlewares d'autorisation : `requireAuth`, `requireRole`, `requireSelfOrAdmin`, et un middleware dédié à la vérification que l'utilisateur est bien propriétaire du logement qu'il modifie.
+- Mise en place de CORS avec origines et méthodes autorisées explicitement définies.
+- Externalisation des secrets et de la configuration via variables d'environnement (`dotenv`, fichier `.env`).
+- Seed automatique d'un compte administrateur au démarrage.
+
+### Gestion des logements (propriétés)
+- Passage d'un CRUD basique à une gestion complète des propriétés : mise à jour de l'hôte, des photos, des équipements et des tags.
+- Ajout de la gestion de l'email de l'hôte sur les propriétés.
+- Suppression sécurisée d'un logement avec nettoyage automatique des fichiers images associés.
+
+### Favoris, notes et uploads
+- Implémentation complète de la gestion des favoris (ajout / suppression par utilisateur).
+- Implémentation de l'upload et de la suppression d'images (`uploadsController`), avec nettoyage des références en base et des fichiers physiques orphelins (`utils/fileUtils.js`).
+
+### Messagerie temps réel
+- Ajout d'un système de messagerie complet entre utilisateurs : conversations, historique des messages, compteur de messages non lus.
+- Communication en temps réel via WebSockets (Socket.IO, `socketHandler.js`).
+- Nettoyage automatique des conversations sans message et des données de test après exécution.
+
+### Emails
+- Ajout d'un service d'envoi d'email (`services/emailService.js`) pour la vérification de compte et la réinitialisation de mot de passe.
+- Bascule du SMTP classique vers l'API HTTPS REST de Brevo pour contourner le blocage des ports SMTP sortants en environnement cloud.
+- Ajout de timeouts, d'options TLS et d'un fallback non bloquant en cas d'échec d'envoi d'email (l'application continue de fonctionner même si l'email échoue).
+
+### Qualité du code
+- Ajout de tests unitaires (`tests/messagesService.test.js`) pour le service de messagerie.
+- Migrations de schéma SQLite (colonnes email / mot de passe, tokens de réinitialisation, etc.) et mise à jour de la dépendance `sqlite3`.
+- Refactorisation générale du code (modularisation en controllers/services/middlewares, remplacement de `var` par `const`).
