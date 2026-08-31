@@ -113,6 +113,8 @@ async function sendViaBrevoApi({ to, subject, text, html }) {
     return { ok: true, messageId: data.messageId };
   } catch (err) {
     console.error(`[EmailService] Brevo HTTPS API error:`, err.message);
+    console.log(`[EmailService] Affichage du contenu de l'email dans la console pour le développement local :`);
+    logEmailLocally({ to, subject, text, html });
     return null;
   }
 }
@@ -137,8 +139,7 @@ async function sendMail({ to, subject, text, html }) {
   const from = process.env.EMAIL_FROM || 'Kasa <noreply@kasa.fr>';
 
   if (!transporter) {
-    console.log('[EmailService] SMTP credentials not provided. Falling back to local log.');
-    logEmailLocally({ to, subject, text, html });
+    console.log('[EmailService] SMTP credentials not provided.');
     return { ok: true, fallback: true };
   }
 
@@ -154,7 +155,6 @@ async function sendMail({ to, subject, text, html }) {
     return { ok: true, messageId: info.messageId };
   } catch (error) {
     console.error(`[EmailService] Failed to send email via SMTP to ${to}:`, error);
-    logEmailLocally({ to, subject, text, html });
     return { ok: false, fallback: true, error: error.message };
   }
 }

@@ -62,3 +62,19 @@ Ce lien expirera dans 24 heures.
 Si vous n'avez pas créé de compte, vous pouvez ignorer cet email.
 ============================================================
   
+2026-08-31T15:23:58.975Z - 
+============================================================
+TO: nicolassurget@hotmail.fr
+SUBJECT: Confirmez votre adresse email - Kasa
+
+Bonjour,
+
+Merci de vous être inscrit sur Kasa.
+Veuillez confirmer votre adresse email en cliquant sur le lien suivant:
+http://localhost:3001/verify-email?token=d79cbffe8a4f51c683b62966069487af06fa2217a66636a0c627e37ee7e189be
+
+Ce lien expirera dans 24 heures.
+
+Si vous n'avez pas créé de compte, vous pouvez ignorer cet email.
+============================================================
+  

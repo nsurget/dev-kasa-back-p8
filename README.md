@@ -137,12 +137,10 @@ Créer une propriété (owner/admin):
 Ce dépôt est un fork de la base de départ fournie par OpenClassrooms. Voici les évolutions apportées par rapport à cette base :
 
 ### Authentification & sécurité
-- Ajout du module d'authentification JWT (inscription, connexion, gestion des rôles `client` / `owner` / `admin`).
+- Modification du module d'authentification JWT (inscription, connexion, gestion des rôles `client` / `owner` / `admin`).
 - Mise en place de la réinitialisation de mot de passe (`/auth/request-reset`, `/auth/reset-password`).
 - Ajout du workflow de vérification d'adresse email à l'inscription (compte non activé tant que l'email n'est pas confirmé).
 - Nouveaux middlewares d'autorisation : `requireAuth`, `requireRole`, `requireSelfOrAdmin`, et un middleware dédié à la vérification que l'utilisateur est bien propriétaire du logement qu'il modifie.
-- Mise en place de CORS avec origines et méthodes autorisées explicitement définies.
-- Externalisation des secrets et de la configuration via variables d'environnement (`dotenv`, fichier `.env`).
 - Seed automatique d'un compte administrateur au démarrage.
 
 ### Gestion des logements (propriétés)

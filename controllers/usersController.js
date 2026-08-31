@@ -21,6 +21,17 @@ async function getById(req, res) {
   try {
     const row = await getUser(db, req.params.id);
     if (!row) return res.status(404).json({ error: 'User not found' });
+
+    const isSelfOrAdmin = req.user && (req.user.id === row.id || req.user.role === 'admin');
+    if (!isSelfOrAdmin) {
+      return res.json({
+        id: row.id,
+        name: row.name,
+        picture: row.picture,
+        role: row.role,
+      });
+    }
+
     res.json(row);
   } catch (e) {
     res.status(statusFromError(e)).json({ error: e.message });

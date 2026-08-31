@@ -21,7 +21,7 @@ router.delete('/properties/:id', requirePropertyOwnerOrAdmin, properties.remove)
 
 // Users
 router.get('/users', requireAdmin, users.list);
-router.get('/users/:id', requireSelfOrAdmin('id'), users.getById);
+router.get('/users/:id', requireAuth, users.getById);
 router.post('/users', requireAdmin, users.create);
 router.patch('/users/:id', requireSelfOrAdmin('id'), users.update);
 router.delete('/users/:id', requireSelfOrAdmin('id'), users.remove);

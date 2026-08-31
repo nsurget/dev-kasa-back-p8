@@ -15,14 +15,15 @@
     { "name": "Users" },
     { "name": "Ratings" },
     { "name": "Favorites" },
-    { "name": "Uploads" }
+    { "name": "Uploads" },
+    { "name": "Messages", "description": "Endpoints REST pour l'historique des conversations. La livraison temps réel des messages, les indicateurs de frappe et les accusés de lecture passent par Socket.IO (hors périmètre de cette spécification OpenAPI)." }
   ],
   "paths": {
     "/auth/register": {
       "post": {
         "tags": ["Auth"],
         "summary": "Register a new user (password auth)",
-        "description": "Choisissez le rôle 'owner' ou 'client'. Par défaut: 'client' si non fourni.",
+        "description": "Le rôle est toujours 'client' à l'inscription (le passage au statut 'owner' se fait ensuite via une demande approuvée par un admin). Le compte est créé non-vérifié : un email de validation est envoyé et aucun token n'est renvoyé tant que l'adresse n'est pas confirmée (voir /auth/verify-email).",
         "requestBody": {
           "required": true,
           "content": {
@@ -34,25 +35,20 @@
                   "name": { "type": "string" },
                   "email": { "type": "string", "format": "email" },
                   "password": { "type": "string", "minLength": 6 },
-                  "picture": { "type": "string", "nullable": true },
-                  "role": { "type": "string", "enum": ["owner", "client"], "default": "client", "description": "Choisir 'owner' ou 'client'. Si omis, 'client' sera utilisé." }
+                  "picture": { "type": "string", "nullable": true }
                 }
               },
               "examples": {
-                "registerClient": {
-                  "summary": "Inscription en tant que client",
-                  "value": { "name": "Alice", "email": "alice@example.com", "password": "secret123", "role": "client" }
-                },
-                "registerOwner": {
-                  "summary": "Inscription en tant que owner",
-                  "value": { "name": "Bob", "email": "bob@example.com", "password": "secret123", "role": "owner" }
+                "register": {
+                  "summary": "Inscription",
+                  "value": { "name": "Alice", "email": "alice@example.com", "password": "secret123" }
                 }
               }
             }
           }
         },
         "responses": {
-          "201": { "description": "Registered", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/AuthResponse" } } } },
+          "201": { "description": "Compte créé, email de validation envoyé (aucun token tant que l'email n'est pas confirmé)", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/RegisterResponse" } } } },
           "400": { "description": "Validation error", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } },
           "409": { "description": "Email already registered", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } }
         }
@@ -80,7 +76,31 @@
         "responses": {
           "200": { "description": "Logged in", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/AuthResponse" } } } },
           "400": { "description": "Missing fields", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } },
-          "401": { "description": "Invalid credentials", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } }
+          "401": { "description": "Invalid credentials", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } },
+          "403": { "description": "Adresse email non vérifiée", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } }
+        }
+      }
+    },
+    "/auth/verify-email": {
+      "post": {
+        "tags": ["Auth"],
+        "summary": "Validate an account using its email verification token",
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "required": ["token"], "properties": { "token": { "type": "string", "description": "Jeton reçu par email lors de l'inscription" } } } } } },
+        "responses": {
+          "200": { "description": "Email validé", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Ok" } } } },
+          "400": { "description": "Jeton manquant, invalide ou expiré", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } }
+        }
+      }
+    },
+    "/auth/resend-verification": {
+      "post": {
+        "tags": ["Auth"],
+        "summary": "Resend the account verification email",
+        "description": "Répond toujours avec succès si l'email n'existe pas, pour éviter l'énumération de comptes.",
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "required": ["email"], "properties": { "email": { "type": "string", "format": "email" } } } } } },
+        "responses": {
+          "200": { "description": "Email de validation (re)envoyé", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Ok" } } } },
+          "400": { "description": "Email manquant, ou compte déjà validé", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } }
         }
       }
     },
@@ -208,13 +228,13 @@
     "/api/users/{id}": {
       "get": {
         "tags": ["Users"],
-        "summary": "Get user by id (self or admin)",
+        "summary": "Get user by id",
+        "description": "Returns user profile. If caller is not self or admin, returns public profile fields (id, name, picture, role).",
         "security": [ { "BearerAuth": [] } ],
         "parameters": [ { "name": "id", "in": "path", "required": true, "schema": { "type": "integer" } } ],
         "responses": {
-          "200": { "description": "User", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/UserPublic" } } } },
+          "200": { "description": "User profile", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/UserPublic" } } } },
           "401": { "description": "Authentication required", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } },
-          "403": { "description": "Forbidden (self or admin only)", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } },
           "404": { "description": "User not found", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } }
         }
       },
@@ -232,6 +252,19 @@
           "400": { "description": "No fields to update / validation error", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } },
           "401": { "description": "Authentication required", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } },
           "403": { "description": "Forbidden (self or admin only; only admins can set role=admin)", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } },
+          "404": { "description": "User not found", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } }
+        }
+      },
+      "delete": {
+        "tags": ["Users"],
+        "summary": "Delete a user account (self or admin)",
+        "description": "Supprime également l'avatar de l'utilisateur, ainsi que tous les logements dont il est propriétaire (et leurs images). Les favoris et notes de l'utilisateur sont supprimés en cascade.",
+        "security": [ { "BearerAuth": [] } ],
+        "parameters": [ { "name": "id", "in": "path", "required": true, "schema": { "type": "integer" } } ],
+        "responses": {
+          "200": { "description": "Deleted", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Ok" } } } },
+          "401": { "description": "Authentication required", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } },
+          "403": { "description": "Forbidden (self or admin only)", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } },
           "404": { "description": "User not found", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } }
         }
       }
@@ -362,6 +395,59 @@
           "403": { "description": "Interdit (owner ou admin seulement)", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } }
         }
       }
+    },
+
+    "/api/conversations": {
+      "get": {
+        "tags": ["Messages"],
+        "summary": "List the current user's conversations",
+        "description": "Retourne uniquement les conversations contenant au moins un message, triées par dernière activité. Inclut le dernier message et le nombre de messages non lus par conversation.",
+        "security": [ { "BearerAuth": [] } ],
+        "responses": {
+          "200": { "description": "Array of conversations", "content": { "application/json": { "schema": { "type": "array", "items": { "$ref": "#/components/schemas/Conversation" } } } } },
+          "401": { "description": "Authentication required", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } }
+        }
+      },
+      "post": {
+        "tags": ["Messages"],
+        "summary": "Get or create a conversation with another user",
+        "description": "Idempotent : si une conversation existe déjà entre les deux utilisateurs, elle est retournée telle quelle (aucun doublon n'est créé).",
+        "security": [ { "BearerAuth": [] } ],
+        "requestBody": {
+          "required": true,
+          "content": { "application/json": { "schema": { "type": "object", "required": ["targetUserId"], "properties": { "targetUserId": { "type": "integer" } } } } }
+        },
+        "responses": {
+          "201": { "description": "Conversation (existante ou nouvellement créée)", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ConversationCreated" } } } },
+          "400": { "description": "targetUserId manquant ou invalide (ou identique à l'utilisateur courant)", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } },
+          "401": { "description": "Authentication required", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } }
+        }
+      }
+    },
+    "/api/conversations/{id}/messages": {
+      "get": {
+        "tags": ["Messages"],
+        "summary": "Get the message history of a conversation",
+        "security": [ { "BearerAuth": [] } ],
+        "parameters": [ { "name": "id", "in": "path", "required": true, "schema": { "type": "integer" } } ],
+        "responses": {
+          "200": { "description": "Messages triés du plus ancien au plus récent", "content": { "application/json": { "schema": { "type": "array", "items": { "$ref": "#/components/schemas/Message" } } } } },
+          "401": { "description": "Authentication required", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } },
+          "404": { "description": "Conversation introuvable ou n'appartenant pas à l'utilisateur", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } }
+        }
+      }
+    },
+    "/api/conversations/{id}/read": {
+      "put": {
+        "tags": ["Messages"],
+        "summary": "Mark all received messages of a conversation as read",
+        "security": [ { "BearerAuth": [] } ],
+        "parameters": [ { "name": "id", "in": "path", "required": true, "schema": { "type": "integer" } } ],
+        "responses": {
+          "200": { "description": "Messages marqués comme lus", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Ok" } } } },
+          "401": { "description": "Authentication required", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } }
+        }
+      }
     }
   },
   "components": {
@@ -386,7 +472,8 @@
           "name": { "type": "string" },
           "email": { "type": "string", "format": "email", "nullable": true },
           "picture": { "type": "string", "nullable": true },
-          "role": { "type": "string", "enum": ["owner", "client", "admin"] }
+          "role": { "type": "string", "enum": ["owner", "client", "admin"] },
+          "owner_request_status": { "type": "string", "enum": ["none", "pending", "approved", "rejected"], "nullable": true }
         },
         "required": ["id", "name", "role"]
       },
@@ -397,6 +484,16 @@
           "user": { "$ref": "#/components/schemas/AuthUser" }
         },
         "required": ["token", "user"]
+      },
+      "RegisterResponse": {
+        "type": "object",
+        "description": "Réponse à l'inscription : le compte est créé mais non vérifié, aucun token n'est délivré tant que l'email n'est pas confirmé.",
+        "properties": {
+          "ok": { "type": "boolean" },
+          "message": { "type": "string" },
+          "user": { "$ref": "#/components/schemas/UserPublic" }
+        },
+        "required": ["ok", "message", "user"]
       },
       "PasswordResetRequestResponse": {
         "type": "object",
@@ -412,8 +509,11 @@
         "properties": {
           "id": { "type": "integer" },
           "name": { "type": "string" },
+          "email": { "type": "string", "format": "email", "nullable": true },
           "picture": { "type": "string", "nullable": true },
-          "role": { "type": "string", "enum": ["owner", "client", "admin"] }
+          "role": { "type": "string", "enum": ["owner", "client", "admin"] },
+          "is_verified": { "type": "integer", "enum": [0, 1], "description": "1 si l'adresse email a été validée" },
+          "owner_request_status": { "type": "string", "enum": ["none", "pending", "approved", "rejected"], "nullable": true }
         },
         "required": ["id", "name", "role"]
       },
@@ -497,13 +597,25 @@
       },
       "PropertyUpdate": {
         "type": "object",
+        "description": "Tous les champs sont optionnels ; seuls ceux fournis sont mis à jour. 'pictures', 'equipments' et 'tags' remplacent entièrement la liste existante (pas de fusion). Seul un admin peut modifier 'host_id'/'host' (ignoré silencieusement sinon).",
         "properties": {
           "title": { "type": "string" },
           "description": { "type": "string" },
           "cover": { "type": "string", "description": "URL vers l'image de couverture. Pour envoyer un fichier, utilisez /api/uploads/image puis placez l'URL renvoyée ici." },
           "location": { "type": "string" },
-          "host_id": { "type": "integer" },
-          "price_per_night": { "type": "number" }
+          "price_per_night": { "type": "number" },
+          "host_id": { "type": "integer", "description": "Admin uniquement" },
+          "host": {
+            "type": "object",
+            "description": "Admin uniquement. Crée/rattache un hôte à partir d'un nom (et photo optionnelle) plutôt qu'un host_id existant.",
+            "properties": {
+              "name": { "type": "string" },
+              "picture": { "type": "string" }
+            }
+          },
+          "pictures": { "type": "array", "description": "Remplace entièrement la galerie de photos existante.", "items": { "type": "string" } },
+          "equipments": { "type": "array", "description": "Remplace entièrement la liste d'équipements existante.", "items": { "type": "string" } },
+          "tags": { "type": "array", "description": "Remplace entièrement la liste de tags existante.", "items": { "type": "string" } }
         },
         "additionalProperties": false
       },
@@ -535,6 +647,50 @@
           "ratings": { "type": "array", "items": { "$ref": "#/components/schemas/Rating" } }
         },
         "required": ["rating_avg", "ratings_count", "ratings"]
+      },
+      "Conversation": {
+        "type": "object",
+        "description": "Conversation telle que retournée par GET /api/conversations (avec aperçu du dernier message et compteur de non-lus).",
+        "properties": {
+          "id": { "type": "integer" },
+          "user1_id": { "type": "integer" },
+          "user2_id": { "type": "integer" },
+          "updated_at": { "type": "string", "format": "date-time" },
+          "other_user_id": { "type": "integer", "description": "Id de l'autre participant de la conversation" },
+          "other_user_name": { "type": "string" },
+          "other_user_picture": { "type": "string", "nullable": true },
+          "last_message": { "type": "string", "nullable": true },
+          "last_message_time": { "type": "string", "format": "date-time", "nullable": true },
+          "last_message_sender_id": { "type": "integer", "nullable": true },
+          "unread_count": { "type": "integer", "description": "Nombre de messages reçus non lus dans cette conversation" }
+        },
+        "required": ["id", "user1_id", "user2_id", "other_user_id", "unread_count"]
+      },
+      "ConversationCreated": {
+        "type": "object",
+        "description": "Conversation telle que retournée par POST /api/conversations (ligne brute, sans les infos de l'autre utilisateur ni le dernier message).",
+        "properties": {
+          "id": { "type": "integer" },
+          "user1_id": { "type": "integer" },
+          "user2_id": { "type": "integer" },
+          "created_at": { "type": "string", "format": "date-time" },
+          "updated_at": { "type": "string", "format": "date-time" }
+        },
+        "required": ["id", "user1_id", "user2_id"]
+      },
+      "Message": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "integer" },
+          "conversation_id": { "type": "integer" },
+          "sender_id": { "type": "integer" },
+          "content": { "type": "string" },
+          "is_read": { "type": "integer", "enum": [0, 1] },
+          "created_at": { "type": "string", "format": "date-time" },
+          "sender_name": { "type": "string" },
+          "sender_picture": { "type": "string", "nullable": true }
+        },
+        "required": ["id", "conversation_id", "sender_id", "content", "created_at"]
       },
       "UploadResponse": {
         "type": "object",
