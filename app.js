@@ -28,7 +28,7 @@ app.use(cors({
     if (allowedOrigins.indexOf(origin) !== -1 || process.env.NODE_ENV !== 'production') {
       return callback(null, true);
     }
-    return callback(null, true); // Permet la flexibilité tout en envoyant l'en-tête d'origine
+    return callback(new Error('Not allowed by CORS'));
   },
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],

@@ -88,6 +88,7 @@ async function createProperty(db, payload) {
     title,
     description = null,
     cover = null,
+    location = null,
     price_per_night,
     host_id,
     host,

@@ -287,25 +287,39 @@ async function seedIfEmpty(db) {
   });
 }
 
+/**
+ * Seeds a single admin account on first boot only.
+ *
+ * Security: this must NEVER overwrite an existing user's password_hash on
+ * subsequent restarts — doing so previously reset the admin password back to
+ * a hardcoded value on every server boot, which is a standing backdoor.
+ * The initial password is read from ADMIN_INITIAL_PASSWORD; if unset, a
+ * random one-time password is generated and printed once so it can be
+ * captured and rotated immediately.
+ *
+ * @param {import('sqlite3').Database} db - Initialized database handle.
+ * @returns {Promise<void>}
+ */
 async function seedAdminUser(db) {
   try {
-    const adminEmail = 'ncsrgt@gmail.com';
-    const { hashPassword } = require('./services/authService');
-    const passwordHash = hashPassword('secret123');
+    const adminEmail = process.env.ADMIN_EMAIL || 'ncsrgt@gmail.com';
     const existing = await db.getAsync('SELECT id, role FROM users WHERE email = ?', [adminEmail]);
+    if (existing) return; // Never touch an existing account's role or password.
 
-    if (!existing) {
-      await db.runAsync(
-        "INSERT INTO users (name, email, password_hash, role, is_verified, owner_request_status) VALUES (?, ?, ?, 'admin', 1, 'none')",
-        ['Nicolas Surget', adminEmail, passwordHash]
-      );
-      console.log('Admin user ncsrgt@gmail.com created successfully.');
+    const { hashPassword } = require('./services/authService');
+    const crypto = require('crypto');
+    const initialPassword = process.env.ADMIN_INITIAL_PASSWORD || crypto.randomBytes(12).toString('hex');
+    const passwordHash = hashPassword(initialPassword);
+
+    await db.runAsync(
+      "INSERT INTO users (name, email, password_hash, role, is_verified, owner_request_status) VALUES (?, ?, ?, 'admin', 1, 'none')",
+      ['Nicolas Surget', adminEmail, passwordHash]
+    );
+
+    if (!process.env.ADMIN_INITIAL_PASSWORD) {
+      console.log(`Admin user ${adminEmail} created with generated password: ${initialPassword} (change it immediately; this is only printed once).`);
     } else {
-      await db.runAsync(
-        "UPDATE users SET role = 'admin', password_hash = ?, is_verified = 1 WHERE email = ?",
-        [passwordHash, adminEmail]
-      );
-      console.log('Admin user ncsrgt@gmail.com updated to admin role.');
+      console.log(`Admin user ${adminEmail} created successfully.`);
     }
   } catch (err) {
     console.error('Failed to seed admin user:', err);

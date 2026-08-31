@@ -28,7 +28,7 @@ router.delete('/users/:id', requireSelfOrAdmin('id'), users.remove);
 
 // Ratings for properties
 router.get('/properties/:id/ratings', ratings.listForProperty);
-router.post('/properties/:id/ratings', ratings.add);
+router.post('/properties/:id/ratings', requireAuth, ratings.add);
 
 // Favorites
 router.post('/properties/:id/favorite', requireAuth, favorites.addForProperty);
